@@ -1,0 +1,18 @@
+{
+  "files": {
+    "main.css": "./static/css/main.c15bc44f.css",
+    "main.js": "./static/js/main.2e27272b.js",
+    "static/media/textures.png": "./static/media/textures.e6c007399ed0f05603e3.png",
+    "static/media/classicVsValley.png": "./static/media/classicVsValley.fb0924c8c55083db0fa2.png",
+    "static/media/kenpixel_mini_square.woff": "./static/media/kenpixel_mini_square.049f97fdc3d085c627b3.woff",
+    "static/media/flag_pop.svg": "./static/media/flag_pop.431e7ad360e83cc68732a387bc1c6e2e.svg",
+    "index.html": "./index.html",
+    "static/media/flag.svg": "./static/media/flag.79f8026389226d251e8d5d1a323c73e0.svg",
+    "main.c15bc44f.css.map": "./static/css/main.c15bc44f.css.map",
+    "main.2e27272b.js.map": "./static/js/main.2e27272b.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.c15bc44f.css",
+    "static/js/main.2e27272b.js"
+  ]
+}
