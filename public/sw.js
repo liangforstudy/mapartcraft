@@ -2,7 +2,7 @@
  * App shell + runtime cache. No user projects or art files ever leave the
  * browser; this only keeps the app itself available offline.
  */
-const CACHE_NAME = "mapartcraft-local-studio-v21";
+const CACHE_NAME = "mapartcraft-local-studio-v22";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -40,9 +40,11 @@ self.addEventListener("fetch", (event) => {
 
   // Navigations go to the network first so a fresh build is picked up on the
   // next load, then fall back to the cached app shell when offline.
+  // cache: "no-store" skips the browser's HTTP cache too: GitHub Pages sends
+  // max-age=600, so a plain fetch() could hand back a 10-minute-old page.
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request)
+      fetch(request, { cache: "no-store" })
         .then((response) => {
           if (response && response.ok) {
             const copy = response.clone();

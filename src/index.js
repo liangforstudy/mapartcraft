@@ -43,8 +43,33 @@ ReactDOM.render(
 if ("serviceWorker" in navigator && process.env.NODE_ENV === "production") {
   window.addEventListener("load", () => {
     const swUrl = new URL("sw.js", appBaseUrl).href;
-    navigator.serviceWorker.register(swUrl).catch((error) => {
-      console.warn("Service worker registration failed", error);
+    // updateViaCache: "none" makes the browser always re-download sw.js
+    // instead of trusting its HTTP cache, so a new deploy is noticed.
+    navigator.serviceWorker
+      .register(swUrl, { updateViaCache: "none" })
+      .then((registration) => {
+        // Check again whenever the tab comes back to the foreground (iOS
+        // keeps tabs alive for days without a real reload).
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible") registration.update().catch(() => {});
+        });
+      })
+      .catch((error) => {
+        console.warn("Service worker registration failed", error);
+      });
+
+    // When a new deploy's worker takes over, reload once so the page and its
+    // scripts all come from the new build instead of a mix of old and new.
+    // Skipped on the very first install, when there was no old worker, and
+    // after the first few seconds so it never wipes out work in progress;
+    // a later update is simply picked up on the next open.
+    const hadController = Boolean(navigator.serviceWorker.controller);
+    const loadedAt = Date.now();
+    let reloading = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (!hadController || reloading || Date.now() - loadedAt > 10000) return;
+      reloading = true;
+      window.location.reload();
     });
   });
 }
