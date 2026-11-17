@@ -6,6 +6,13 @@
 
 **Live site:** <https://liangforstudy.github.io/mapartcraft/>
 
+## Changes in this copy compared to upstream
+
+This repository is [liangforstudy/mapartcraft](https://github.com/liangforstudy/mapartcraft), a fork of [AxopupelBruh/mapartcraft](https://github.com/AxopupelBruh/mapartcraft). These changes are not upstream yet:
+
+- **Pinch to zoom in the pixel editor (work in progress, [#1](https://github.com/liangforstudy/mapartcraft/issues/1)).** On touch screens, two fingers zoom (1x to 32x) and pan the picture inside the editor box, without scrolling the page. One finger still draws. Double-tap or close the editor to reset the view.
+- **No more stale builds after a deploy.** The service worker now fetches the page past the browser's HTTP cache and re-checks for an update when the tab returns to the foreground, so a new deploy shows up without clearing website data.
+
 ## What this fork adds
 
 ### Studio and interface

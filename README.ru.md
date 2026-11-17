@@ -4,7 +4,14 @@
 
 **MapartCraft Local Studio — это форк [mike2b2t/mapartcraft](https://github.com/mike2b2t/mapartcraft)**, основанный на оригинальном [MapartCraft от rebane2001](https://rebane2001.com/mapartcraft). Он сохраняет оригинальный процесс NBT / map.dat и добавляет локальную студию, новые палитры Minecraft, дополнительную обработку изображений, встроенный пиксельный редактор и файлы проекта. Это не отдельный формат мапарта и не проект, написанный с нуля.
 
-**Сайт:** <https://axopupelbruh.github.io/mapartcraft/>
+**Сайт:** <https://liangforstudy.github.io/mapartcraft/>
+
+## Отличия этой копии от upstream
+
+Этот репозиторий — [liangforstudy/mapartcraft](https://github.com/liangforstudy/mapartcraft), форк [AxopupelBruh/mapartcraft](https://github.com/AxopupelBruh/mapartcraft). Этих изменений в upstream пока нет:
+
+- **Масштабирование щипком в пиксельном редакторе (в работе, [#1](https://github.com/liangforstudy/mapartcraft/issues/1)).** На сенсорном экране два пальца масштабируют (от 1x до 32x) и сдвигают картинку внутри окна редактора, не прокручивая страницу. Один палец по-прежнему рисует. Двойной тап или закрытие редактора сбрасывает вид.
+- **Больше никаких устаревших сборок после деплоя.** Service worker теперь загружает страницу в обход HTTP-кэша браузера и заново проверяет обновление, когда вкладка снова становится активной, поэтому новый деплой появляется без очистки данных сайта.
 
 ## Что добавляет этот форк
 
