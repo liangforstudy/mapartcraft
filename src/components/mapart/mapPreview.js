@@ -1945,6 +1945,138 @@ class MapPreview extends Component {
     this.shapeChanged = false;
   };
 
+  /* Two-finger gestures on touch screens (iOS has no ctrl+wheel):
+     a second finger cancels the stroke in progress and switches to
+     pinch-to-zoom + two-finger pan until every finger is lifted. */
+  getScrollParent = (node) => {
+    let el = node ? node.parentElement : null;
+    while (el && el !== document.body && el !== document.documentElement) {
+      const style = window.getComputedStyle(el);
+      if (/(auto|scroll)/.test(style.overflowX + style.overflowY) && (el.scrollWidth > el.clientWidth || el.scrollHeight > el.clientHeight)) {
+        return el;
+      }
+      el = el.parentElement;
+    }
+    return null;
+  };
+
+  scrollEditorBy = (dx, dy) => {
+    if (!dx && !dy) return;
+    const parent = this.getScrollParent(this.canvasRef_display.current);
+    if (parent) {
+      const beforeLeft = parent.scrollLeft;
+      const beforeTop = parent.scrollTop;
+      parent.scrollBy(dx, dy);
+      dx -= parent.scrollLeft - beforeLeft;
+      dy -= parent.scrollTop - beforeTop;
+    }
+    if (dx || dy) window.scrollBy(dx, dy);
+  };
+
+  getTouchGestureCentre = () => {
+    const points = Array.from(this.touchPoints.values()).slice(0, 2);
+    const [a, b] = points;
+    return {
+      x: (a.x + b.x) / 2,
+      y: (a.y + b.y) / 2,
+      distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+    };
+  };
+
+  startTouchGesture = () => {
+    const centre = this.getTouchGestureCentre();
+    this.touchGesture = {
+      startDistance: centre.distance,
+      startScale: Math.max(1, Math.round(this.props.optionValue_previewScale || 2)),
+      lastX: centre.x,
+      lastY: centre.y,
+      pendingScale: false,
+    };
+  };
+
+  updateTouchGesture = () => {
+    const gesture = this.touchGesture;
+    const canvas = this.canvasRef_display.current;
+    if (!gesture || !canvas || this.touchPoints.size < 2) return;
+    const centre = this.getTouchGestureCentre();
+
+    // Pan: follow the midpoint of the two fingers.
+    this.scrollEditorBy(gesture.lastX - centre.x, gesture.lastY - centre.y);
+    gesture.lastX = centre.x;
+    gesture.lastY = centre.y;
+
+    // Zoom: preview scale is a whole number from 1 to 8.
+    if (gesture.pendingScale || !this.props.onOptionChange_previewScale) return;
+    const oldScale = Math.max(1, Math.round(this.props.optionValue_previewScale || 2));
+    const target = Math.max(1, Math.min(8, Math.round(gesture.startScale * (centre.distance / gesture.startDistance))));
+    if (target === oldScale) return;
+    const rect = canvas.getBoundingClientRect();
+    const localX = centre.x - rect.left;
+    const localY = centre.y - rect.top;
+    const ratio = target / oldScale;
+    gesture.pendingScale = true;
+    this.props.onOptionChange_previewScale(target);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        const newRect = canvas.getBoundingClientRect();
+        // Keep the canvas point under the fingers in place.
+        this.scrollEditorBy(newRect.left + localX * ratio - centre.x, newRect.top + localY * ratio - centre.y);
+        if (this.touchGesture === gesture) gesture.pendingScale = false;
+      });
+    });
+  };
+
+  handleCanvasPointerDown = (event) => {
+    if (this.state.editorEnabled && event.pointerType === "touch") {
+      if (!this.touchPoints) this.touchPoints = new Map();
+      this.touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (this.touchPoints.size >= 2) {
+        event.preventDefault();
+        if (!this.touchGesture) {
+          this.onEditorPointerCancel();
+          this.startTouchGesture();
+        }
+        return;
+      }
+      if (this.touchGesture) return;
+    }
+    this.onEditorPointerDown(event);
+  };
+
+  handleCanvasPointerMove = (event) => {
+    if (event.pointerType === "touch" && this.touchPoints && this.touchPoints.has(event.pointerId)) {
+      this.touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (this.touchGesture) {
+        event.preventDefault();
+        this.updateTouchGesture();
+        return;
+      }
+    }
+    this.onEditorPointerMove(event);
+  };
+
+  endCanvasTouch = (event) => {
+    if (event.pointerType !== "touch" || !this.touchPoints) return false;
+    this.touchPoints.delete(event.pointerId);
+    if (!this.touchGesture) return false;
+    if (this.touchPoints.size === 0) {
+      this.touchGesture = null;
+    } else if (this.touchPoints.size >= 2) {
+      this.startTouchGesture();
+    }
+    return true;
+  };
+
+  handleCanvasPointerUp = (event) => {
+    if (this.endCanvasTouch(event)) return;
+    this.finishEditorStroke(event);
+  };
+
+  handleCanvasPointerCancel = (event) => {
+    if (this.endCanvasTouch(event)) return;
+    this.onEditorPointerCancel(event);
+  };
+
   onEditorPointerDown = (event) => {
     if (!this.state.editorEnabled) return;
     const point = this.getCanvasPixel(event);
@@ -2508,10 +2640,10 @@ class MapPreview extends Component {
             onClick={() => {
               if (!editorEnabled) this.fileInputRef.current.click();
             }}
-            onPointerDown={this.onEditorPointerDown}
-            onPointerMove={this.onEditorPointerMove}
-            onPointerUp={this.finishEditorStroke}
-            onPointerCancel={this.onEditorPointerCancel}
+            onPointerDown={this.handleCanvasPointerDown}
+            onPointerMove={this.handleCanvasPointerMove}
+            onPointerUp={this.handleCanvasPointerUp}
+            onPointerCancel={this.handleCanvasPointerCancel}
             onContextMenu={(event) => {
               if (editorEnabled) event.preventDefault();
             }}
