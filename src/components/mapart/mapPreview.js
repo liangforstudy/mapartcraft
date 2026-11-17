@@ -193,6 +193,8 @@ class MapPreview extends Component {
     super(props);
     this.canvasRef_source = createRef(); // hidden source canvas that at all times contains the uploaded image
     this.canvasRef_display = createRef(); // display canvas that displays to the user, may be pixels, may be image
+    this.editorViewportRef = createRef(); // clipped box the editor pinches/pans inside
+    this.mapCanvasWrapRef = createRef(); // content moved by the pinch/pan transform
     this.canvasRef_editor = createRef(); // transient overlay for immediate brush feedback
     this.canvasRef_selection = createRef(); // rectangular selection outline
     this.coordsRef = createRef();
@@ -283,6 +285,14 @@ class MapPreview extends Component {
   }
 
   componentDidUpdate(prevProps, prevState) {
+    if (
+      (prevState.editorEnabled && !this.state.editorEnabled) ||
+      prevProps.optionValue_mapSize_x !== this.props.optionValue_mapSize_x ||
+      prevProps.optionValue_mapSize_y !== this.props.optionValue_mapSize_y ||
+      prevProps.optionValue_previewScale !== this.props.optionValue_previewScale
+    ) {
+      this.resetEditorView();
+    }
     if (
       prevProps.uploadedImage !== this.props.uploadedImage ||
       prevProps.optionValue_mapSize_x !== this.props.optionValue_mapSize_x ||
@@ -1945,37 +1955,39 @@ class MapPreview extends Component {
     this.shapeChanged = false;
   };
 
-  /* Two-finger gestures on touch screens (iOS has no ctrl+wheel):
-     a second finger cancels the stroke in progress and switches to
-     pinch-to-zoom + two-finger pan until every finger is lifted. */
-  getScrollParent = (node) => {
-    let el = node ? node.parentElement : null;
-    while (el && el !== document.body && el !== document.documentElement) {
-      const style = window.getComputedStyle(el);
-      if (/(auto|scroll)/.test(style.overflowX + style.overflowY) && (el.scrollWidth > el.clientWidth || el.scrollHeight > el.clientHeight)) {
-        return el;
-      }
-      el = el.parentElement;
-    }
-    return null;
+  /* Two-finger gestures on touch screens (iOS has no ctrl+wheel).
+     Like the pixel-art app: the canvas sits in a fixed, clipped box and
+     the gesture only moves/zooms the content inside that box with a CSS
+     transform, so the page itself never scrolls or re-lays out. A second
+     finger cancels the stroke in progress. */
+  editorView = { s: 1, x: 0, y: 0 };
+
+  applyEditorView = () => {
+    const wrap = this.mapCanvasWrapRef.current;
+    if (!wrap) return;
+    const { s, x, y } = this.editorView;
+    wrap.style.transform = s === 1 && x === 0 && y === 0 ? "" : `translate(${x}px, ${y}px) scale(${s})`;
   };
 
-  scrollEditorBy = (dx, dy) => {
-    if (!dx && !dy) return;
-    const parent = this.getScrollParent(this.canvasRef_display.current);
-    if (parent) {
-      const beforeLeft = parent.scrollLeft;
-      const beforeTop = parent.scrollTop;
-      parent.scrollBy(dx, dy);
-      dx -= parent.scrollLeft - beforeLeft;
-      dy -= parent.scrollTop - beforeTop;
-    }
-    if (dx || dy) window.scrollBy(dx, dy);
+  resetEditorView = () => {
+    this.editorView = { s: 1, x: 0, y: 0 };
+    this.applyEditorView();
+  };
+
+  clampEditorView = () => {
+    const wrap = this.mapCanvasWrapRef.current;
+    const view = this.editorView;
+    view.s = Math.max(1, Math.min(32, view.s));
+    if (!wrap) return;
+    // Content is never smaller than the box, so keep its edges outside it.
+    const w = wrap.offsetWidth;
+    const h = wrap.offsetHeight;
+    view.x = Math.min(0, Math.max(w - w * view.s, view.x));
+    view.y = Math.min(0, Math.max(h - h * view.s, view.y));
   };
 
   getTouchGestureCentre = () => {
-    const points = Array.from(this.touchPoints.values()).slice(0, 2);
-    const [a, b] = points;
+    const [a, b] = Array.from(this.touchPoints.values()).slice(0, 2);
     return {
       x: (a.x + b.x) / 2,
       y: (a.y + b.y) / 2,
@@ -1984,46 +1996,38 @@ class MapPreview extends Component {
   };
 
   startTouchGesture = () => {
+    const viewport = this.editorViewportRef.current;
+    if (!viewport) return;
+    const box = viewport.getBoundingClientRect();
     const centre = this.getTouchGestureCentre();
+    const view = this.editorView;
     this.touchGesture = {
       startDistance: centre.distance,
-      startScale: Math.max(1, Math.round(this.props.optionValue_previewScale || 2)),
-      lastX: centre.x,
-      lastY: centre.y,
-      pendingScale: false,
+      startScale: view.s,
+      // The content point under the fingers, in unscaled pixels.
+      anchorX: (centre.x - box.left - view.x) / view.s,
+      anchorY: (centre.y - box.top - view.y) / view.s,
     };
   };
 
   updateTouchGesture = () => {
     const gesture = this.touchGesture;
-    const canvas = this.canvasRef_display.current;
-    if (!gesture || !canvas || this.touchPoints.size < 2) return;
+    const viewport = this.editorViewportRef.current;
+    if (!gesture || !viewport || this.touchPoints.size < 2) return;
+    const box = viewport.getBoundingClientRect();
     const centre = this.getTouchGestureCentre();
-
-    // Pan: follow the midpoint of the two fingers.
-    this.scrollEditorBy(gesture.lastX - centre.x, gesture.lastY - centre.y);
-    gesture.lastX = centre.x;
-    gesture.lastY = centre.y;
-
-    // Zoom: preview scale is a whole number from 1 to 8.
-    if (gesture.pendingScale || !this.props.onOptionChange_previewScale) return;
-    const oldScale = Math.max(1, Math.round(this.props.optionValue_previewScale || 2));
-    const target = Math.max(1, Math.min(8, Math.round(gesture.startScale * (centre.distance / gesture.startDistance))));
-    if (target === oldScale) return;
-    const rect = canvas.getBoundingClientRect();
-    const localX = centre.x - rect.left;
-    const localY = centre.y - rect.top;
-    const ratio = target / oldScale;
-    gesture.pendingScale = true;
-    this.props.onOptionChange_previewScale(target);
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        const newRect = canvas.getBoundingClientRect();
-        // Keep the canvas point under the fingers in place.
-        this.scrollEditorBy(newRect.left + localX * ratio - centre.x, newRect.top + localY * ratio - centre.y);
-        if (this.touchGesture === gesture) gesture.pendingScale = false;
+    const view = this.editorView;
+    view.s = Math.max(1, Math.min(32, gesture.startScale * (centre.distance / gesture.startDistance)));
+    // Keep the anchored content point under the fingers' midpoint.
+    view.x = centre.x - box.left - gesture.anchorX * view.s;
+    view.y = centre.y - box.top - gesture.anchorY * view.s;
+    this.clampEditorView();
+    if (!this.viewFrame) {
+      this.viewFrame = window.requestAnimationFrame(() => {
+        this.viewFrame = null;
+        this.applyEditorView();
       });
-    });
+    }
   };
 
   handleCanvasPointerDown = (event) => {
@@ -2392,6 +2396,7 @@ class MapPreview extends Component {
   };
 
   componentWillUnmount() {
+    if (this.viewFrame) window.cancelAnimationFrame(this.viewFrame);
     window.removeEventListener("keydown", this.handleEditorKeyDown, true);
     if (this.refreshTimer) {
       window.clearTimeout(this.refreshTimer);
@@ -2607,7 +2612,12 @@ class MapPreview extends Component {
             </React.Fragment>
           ) : null}
         </div>
-        <div className="mapCanvasWrap">
+        <div
+          className={editorEnabled ? "pixelEditorViewport" : undefined}
+          ref={this.editorViewportRef}
+          onDoubleClick={editorEnabled ? this.resetEditorView : undefined}
+        >
+        <div className="mapCanvasWrap" ref={this.mapCanvasWrapRef}>
           <span
             className="gridOverlay"
             style={{
@@ -2667,6 +2677,7 @@ class MapPreview extends Component {
             </React.Fragment>
           ) : null}
           <canvas className="displayNone" width={128 * optionValue_mapSize_x} height={128 * optionValue_mapSize_y} ref={this.canvasRef_source}></canvas>
+        </div>
         </div>
         {editorEnabled && editorSelection ? (
           <div className="pixelEditorSelectionBar" role="toolbar" aria-label={this.t("PIXEL-EDITOR/ACTIONS-ARIA", "Selection actions")}>

@@ -388,3 +388,18 @@
   text-align: right;
   white-space: nowrap;
 }
+
+/* Pixel editor: pinch-to-zoom and two-finger pan happen inside this box
+   (transform on .mapCanvasWrap), so the page around it never scrolls. */
+.pixelEditorViewport {
+  position: relative;
+  overflow: hidden;
+  width: max-content;
+  max-width: 100%;
+  touch-action: none;
+  overscroll-behavior: contain;
+}
+
+.pixelEditorViewport .mapCanvasWrap {
+  transform-origin: 0 0;
+}
